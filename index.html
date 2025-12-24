@@ -25,8 +25,7 @@
       color:var(--text);
       overflow-x:hidden;
     }
-
-    /* === SNOW CANVAS === */
+	  
     canvas#snow{
       position:fixed;
       inset:0;
@@ -115,6 +114,11 @@
       color:#fff;
       border-color:#7c5cff;
     }
+	
+	body::after{
+		content:"";
+		display:block;
+	}
 
   </style>
 </head>
@@ -207,6 +211,8 @@
 const canvas = document.getElementById("snow");
 const ctx = canvas.getContext("2d");
 
+let wind = 0;
+let windTarget = 0;
 let w, h;
 let mode = "ash";
 let particles = [];
@@ -223,7 +229,8 @@ window.addEventListener("resize", resize);
 resize();
 
 window.addEventListener("scroll", () => {
-  scrollSpeed = window.scrollY - lastScroll;
+  scrollSpeed = (window.scrollY - lastScroll) * 0.5;
+	windTarget += scrollSpeed * 0.01;
   lastScroll = window.scrollY;
 });
 
@@ -257,19 +264,6 @@ function createSnow(count){
   }
 }
 
-function createSmoke(count){
-  smoke=[];
-  for(let i=0;i<count;i++){
-    smoke.push({
-      x:Math.random()*w,
-      y:h+Math.random()*200,
-      r:Math.random()*120+80,
-      vy:Math.random()*0.15+0.05,
-      alpha:Math.random()*0.06+0.02
-    });
-  }
-}
-
 function createSparks(count){
   sparks=[];
   for(let i=0;i<count;i++){
@@ -293,7 +287,7 @@ function drawAsh(){
     ctx.restore();
 
     p.y+=p.vy+Math.abs(scrollSpeed)*0.02;
-    p.x+=p.vx;
+    p.x += p.vx + wind * 0.8;
     p.rot+=p.vr;
 
     if(p.y>h) p.y=-20;
@@ -312,17 +306,6 @@ function drawSnow(){
   }
 }
 
-function drawSmoke(){
-  for(const s of smoke){
-    ctx.fillStyle=`rgba(120,120,120,${s.alpha})`;
-    ctx.beginPath();
-    ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
-    ctx.fill();
-    s.y-=s.vy;
-    if(s.y<-s.r) s.y=h+s.r;
-  }
-}
-
 function drawSparks(){
   ctx.fillStyle="rgba(255,140,40,.8)";
   for(const sp of sparks){
@@ -337,12 +320,17 @@ function drawSparks(){
 }
 
 function loop(){
-  ctx.clearRect(0,0,w,h);
+ctx.clearRect(0,0,w,h);
+
+windTarget += (Math.random() - 0.5) * 0.02;
+windTarget = Math.max(Math.min(windTarget, 0.6), -0.6);
+wind += (windTarget - wind) * 0.01;
+
 
   if(mode==="ash"){
-    drawSmoke();
-    drawAsh();
-    drawSparks();
+	drawAsh();
+	drawSparks();
+	drawSmoke();
   }
   if(mode==="snow"){
     drawSnow();
@@ -368,6 +356,79 @@ document.querySelectorAll("#fx-toggle button").forEach(btn=>{
     }
   };
 });
+
+function createSmoke(count){
+  smoke = [];
+  for(let i=0;i<count;i++){
+    smoke.push(makeSmoke());
+  }
+}
+
+function makeSmoke(){
+  return {
+    x: Math.random()*w,
+    y: h + Math.random()*200,
+    size: Math.random()*160 + 120,
+    vx: Math.random()*0.25 - 0.125,
+    vy: Math.random()*0.2 + 0.05,
+    alpha: Math.random()*0.12 + 0.08,
+    life: Math.random()*400 + 300,
+    seed: Math.random()*1000
+  };
+}
+
+function drawSmoke(){
+  for(const s of smoke){
+    drawSmokeBlob(s);
+
+    s.y -= s.vy;
+    s.x += s.vx + wind * 1.5 + Math.sin(s.seed += 0.01) * 0.3;
+    s.life--;
+
+    if(s.life <= 0 || s.y < -s.size * 0.6){
+      Object.assign(s, makeSmoke());
+      s.y = h + s.size;
+    }
+  }
+}
+
+function drawSmokeBlob(s){
+  const gradient = ctx.createRadialGradient(
+    s.x, s.y, s.size * 0.2,
+    s.x, s.y, s.size
+  );
+
+  gradient.addColorStop(0, `rgba(150,150,150,${s.alpha})`);
+  gradient.addColorStop(0.4, `rgba(120,120,120,${s.alpha*0.6})`);
+  gradient.addColorStop(1, `rgba(120,120,120,0)`);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = gradient;
+
+  ctx.beginPath();
+  const points = 14;
+
+  for(let i=0;i<=points;i++){
+    const angle = (i/points) * Math.PI * 2;
+
+    const noise =
+      Math.sin(angle * 3 + s.seed) * s.size * 0.15 +
+      Math.cos(angle * 5 + s.seed * 1.4) * s.size * 0.1;
+
+    const r = s.size * 0.55 + noise;
+    const px = s.x + Math.cos(angle) * r;
+    const py = s.y + Math.sin(angle) * r;
+
+    if(i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 
 createAsh(Math.floor(w/7));
 createSmoke(6);
